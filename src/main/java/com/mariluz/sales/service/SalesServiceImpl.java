@@ -1,11 +1,8 @@
 package com.mariluz.sales.service;
 
 import com.mariluz.sales.client.CatalogClient;
-import com.mariluz.sales.dto.SaleItemRequest;
-import com.mariluz.sales.dto.SaleItemResponse;
-import com.mariluz.sales.dto.SaleRequest;
-import com.mariluz.sales.dto.SaleResponse;
-import com.mariluz.sales.dto.catalog.ProductResponse;
+import com.mariluz.sales.dto.*;
+import com.mariluz.sales.dto.catalog.*;
 import com.mariluz.sales.exceptions.SaleNotFoundException;
 import com.mariluz.sales.exceptions.UnauthorizedOperationException;
 import com.mariluz.sales.model.Sale;
@@ -121,6 +118,8 @@ public class SalesServiceImpl implements SalesService {
         System.out.println(total);
         // iniciar lista de items de venta
         List<SaleItem> items = new ArrayList<>();
+        // inicializar lista para notificacion
+        List<String> productsNoti = new ArrayList<>();
 
         // 4. actualizar stock
         validatedItemsMap.forEach((item, p) -> {
@@ -130,7 +129,7 @@ public class SalesServiceImpl implements SalesService {
                 item.getQuantity(),
                 authHeader
             );
-            // y vamos agregando los items a una lista (construyendo el objeto)
+            // agregamos los items a una lista (construyendo el objeto)
             items.add(
                 SaleItem.builder()
                     .productId(p.getId())
@@ -139,6 +138,9 @@ public class SalesServiceImpl implements SalesService {
                     .subTotal(item.getQuantity() * p.getPrice())
                     .build()
             );
+
+            // agregamos los items a la lista que enviaremos por correo
+            productsNoti.add(p.getName() + " - " + item.getQuantity());
         });
         // 5. guardar venta
         Sale sale = Sale.builder()
@@ -158,6 +160,7 @@ public class SalesServiceImpl implements SalesService {
         repo.save(sale);
 
         // 6. mandar notificacion con los productos comprados --> opcional por ahora
+
         // 7. retornar respuesta
         return SaleResponse.builder()
             .id(sale.getId())
@@ -190,6 +193,7 @@ public class SalesServiceImpl implements SalesService {
             .findByIdAndUserId(id, user.getId())
             .orElseThrow(SaleNotFoundException::new);
 
+        // 3. construir respuesta
         return SaleResponse.builder()
             .id(sale.getId())
             .total(sale.getTotal())
@@ -209,5 +213,57 @@ public class SalesServiceImpl implements SalesService {
                     .toList()
             )
             .build();
+    }
+
+    @Override
+    public SaleStatusResponse getStatusBySaleId(Integer saleId) {
+        // 1. obtener usuario
+        User user = getCurrentUser();
+
+        // 2. construir respuesta
+        return SaleStatusResponse.builder()
+            .status(
+                repo
+                    .findStatusByIdAndUserId(saleId, user.getId())
+                    .orElseThrow(SaleNotFoundException::new)
+            )
+            .build();
+    }
+
+    @Override
+    public List<SaleResponse> getAllSales() {
+        // 1. validar acceso admin
+        validateAdminAccess(
+            "Solo un administrador puede acceder a todas las ventas"
+        );
+
+        // 2. buscar ventas
+        List<Sale> sales = repo.findAll();
+
+        // 3. construir respuesta
+        return sales
+            .stream()
+            .map(sale ->
+                SaleResponse.builder()
+                    .id(sale.getId())
+                    .total(sale.getTotal())
+                    .status(sale.getStatus())
+                    .createdAt(sale.getCreatedAt())
+                    .products(
+                        sale
+                            .getItems()
+                            .stream()
+                            .map(i ->
+                                SaleItemResponse.builder()
+                                    .id(i.getId())
+                                    .quantity(i.getQuantity())
+                                    .subTotal(i.getSubTotal())
+                                    .build()
+                            )
+                            .toList()
+                    )
+                    .build()
+            )
+            .toList();
     }
 }

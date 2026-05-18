@@ -17,16 +17,33 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // Handler venta no encontrada
+    // Handler producto no encontrado
+    @ExceptionHandler(CouldNotUpdateStockException.class)
+    public ResponseEntity<ErrorResponse> handleCouldNotUpdateStock(
+        CouldNotUpdateStockException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .message("No se pudo actualizar el stock")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler producto no encontrado
     @ExceptionHandler(ProductsNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleProductsNotFound(
         ProductsNotFoundException ex,
         HttpServletRequest request
     ) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
-                .status(HttpStatus.FORBIDDEN.value())
+                .status(HttpStatus.NOT_FOUND.value())
                 .message("Productos no encontrados")
                 .errors(Map.of("error", ex.getMessage()))
                 .endpoint(request.getRequestURI())
@@ -40,10 +57,10 @@ public class GlobalExceptionHandler {
         SaleNotFoundException ex,
         HttpServletRequest request
     ) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
-                .status(HttpStatus.FORBIDDEN.value())
+                .status(HttpStatus.NOT_FOUND.value())
                 .message("Venta no encontrada")
                 .errors(Map.of("error", ex.getMessage()))
                 .endpoint(request.getRequestURI())
@@ -62,10 +79,10 @@ public class GlobalExceptionHandler {
             "Revise el formato de los campos enviados."
         );
 
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
-                .status(HttpStatus.FORBIDDEN.value())
+                .status(HttpStatus.BAD_REQUEST.value())
                 .message("Error en la solicitud")
                 .errors(error)
                 .endpoint(request.getRequestURI())
