@@ -6,6 +6,7 @@ import com.mariluz.sales.dto.SaleItemResponse;
 import com.mariluz.sales.dto.SaleRequest;
 import com.mariluz.sales.dto.SaleResponse;
 import com.mariluz.sales.dto.catalog.ProductResponse;
+import com.mariluz.sales.exceptions.SaleNotFoundException;
 import com.mariluz.sales.exceptions.UnauthorizedOperationException;
 import com.mariluz.sales.model.Sale;
 import com.mariluz.sales.model.SaleItem;
@@ -158,6 +159,37 @@ public class SalesServiceImpl implements SalesService {
 
         // 6. mandar notificacion con los productos comprados --> opcional por ahora
         // 7. retornar respuesta
+        return SaleResponse.builder()
+            .id(sale.getId())
+            .total(sale.getTotal())
+            .status(sale.getStatus())
+            .createdAt(sale.getCreatedAt())
+            .products(
+                sale
+                    .getItems()
+                    .stream()
+                    .map(i ->
+                        SaleItemResponse.builder()
+                            .id(i.getId())
+                            .quantity(i.getQuantity())
+                            .subTotal(i.getSubTotal())
+                            .build()
+                    )
+                    .toList()
+            )
+            .build();
+    }
+
+    @Override
+    public SaleResponse getSaleById(Integer id) {
+        // 1. obtener usuario
+        User user = getCurrentUser();
+
+        // 2.
+        Sale sale = repo
+            .findByIdAndUserId(id, user.getId())
+            .orElseThrow(SaleNotFoundException::new);
+
         return SaleResponse.builder()
             .id(sale.getId())
             .total(sale.getTotal())

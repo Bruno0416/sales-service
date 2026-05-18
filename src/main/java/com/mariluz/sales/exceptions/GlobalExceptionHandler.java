@@ -9,12 +9,69 @@ import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // Handler venta no encontrada
+    @ExceptionHandler(ProductsNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleProductsNotFound(
+        ProductsNotFoundException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.FORBIDDEN.value())
+                .message("Productos no encontrados")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler venta no encontrada
+    @ExceptionHandler(SaleNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleSaleNotFound(
+        SaleNotFoundException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.FORBIDDEN.value())
+                .message("Venta no encontrada")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Validacion Parseo del json
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleJsonParseError(
+        HttpMessageNotReadableException ex,
+        HttpServletRequest request
+    ) {
+        Map<String, String> error = Map.of(
+            "error",
+            "Revise el formato de los campos enviados."
+        );
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.FORBIDDEN.value())
+                .message("Error en la solicitud")
+                .errors(error)
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
 
     // Handler permisos usuario
     @ExceptionHandler(UnauthorizedOperationException.class)
