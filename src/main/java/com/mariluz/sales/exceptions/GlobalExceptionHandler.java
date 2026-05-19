@@ -10,6 +10,7 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -55,6 +56,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SaleNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleSaleNotFound(
         SaleNotFoundException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.NOT_FOUND.value())
+                .message("Venta no encontrada")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler MethodNotSupported Exception
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+        HttpRequestMethodNotSupportedException ex,
         HttpServletRequest request
     ) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
