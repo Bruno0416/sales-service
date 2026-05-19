@@ -15,5 +15,6 @@ public interface SalesService {
     // 4. listar ventas (admin)
     public List<SaleResponse> getAllSales();
     // 5. buscar mis compras (por usuario)
+    public List<SaleResponse> getSalesByUserId();
     // 6. cancelar venta(idVenta)
 }

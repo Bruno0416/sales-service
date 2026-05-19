@@ -266,4 +266,40 @@ public class SalesServiceImpl implements SalesService {
             )
             .toList();
     }
+
+    @Override
+    public List<SaleResponse> getSalesByUserId() {
+        // 1. obtener usuario
+
+        User user = getCurrentUser();
+
+        // 2. buscar ventas
+        List<Sale> sales = repo.findByUserId(user.getId());
+
+        // 3. construir respuesta
+        return sales
+            .stream()
+            .map(sale ->
+                SaleResponse.builder()
+                    .id(sale.getId())
+                    .total(sale.getTotal())
+                    .status(sale.getStatus())
+                    .createdAt(sale.getCreatedAt())
+                    .products(
+                        sale
+                            .getItems()
+                            .stream()
+                            .map(i ->
+                                SaleItemResponse.builder()
+                                    .id(i.getId())
+                                    .quantity(i.getQuantity())
+                                    .subTotal(i.getSubTotal())
+                                    .build()
+                            )
+                            .toList()
+                    )
+                    .build()
+            )
+            .toList();
+    }
 }

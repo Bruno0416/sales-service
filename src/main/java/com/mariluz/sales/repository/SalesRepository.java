@@ -2,6 +2,7 @@ package com.mariluz.sales.repository;
 
 import com.mariluz.sales.model.Sale;
 import com.mariluz.sales.model.Status;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -19,4 +20,7 @@ public interface SalesRepository extends JpaRepository<Sale, Integer> {
         @Param("id") Integer id,
         @Param("userId") String userId
     ); // metodo para buscar el estado de una venta por su ID y el ID del usuario que la creó
+
+    // metodo para buscar ventas por el ID del usuario que las creó
+    public List<Sale> findByUserId(String userId);
 }
