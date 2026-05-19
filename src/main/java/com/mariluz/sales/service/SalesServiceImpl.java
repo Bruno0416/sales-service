@@ -3,6 +3,7 @@ package com.mariluz.sales.service;
 import com.mariluz.sales.client.CatalogClient;
 import com.mariluz.sales.dto.*;
 import com.mariluz.sales.dto.catalog.*;
+import com.mariluz.sales.exceptions.CouldNotCancelSaleException;
 import com.mariluz.sales.exceptions.SaleNotFoundException;
 import com.mariluz.sales.exceptions.UnauthorizedOperationException;
 import com.mariluz.sales.model.Sale;
@@ -270,11 +271,12 @@ public class SalesServiceImpl implements SalesService {
     @Override
     public List<SaleResponse> getSalesByUserId() {
         // 1. obtener usuario
-
         User user = getCurrentUser();
 
         // 2. buscar ventas
         List<Sale> sales = repo.findByUserId(user.getId());
+
+        System.out.println(sales);
 
         // 3. construir respuesta
         return sales
@@ -301,5 +303,28 @@ public class SalesServiceImpl implements SalesService {
                     .build()
             )
             .toList();
+    }
+
+    @Override
+    public void cancelSale(Integer saleId) {
+        // 1. obtener usuario
+        User user = getCurrentUser();
+
+        // 2. verificar que la venta le pertenece al usuario
+        if (!repo.existsByIdAndUserId(saleId, user.getId())) {
+            throw new CouldNotCancelSaleException();
+        }
+
+        // 3. cambiar status de la venta y marcar como cancelada
+        // 3.1 encontrar venta
+        Sale sale = repo
+            .findById(saleId)
+            .orElseThrow(CouldNotCancelSaleException::new);
+
+        // 3.2 cambiar estado
+        sale.setStatus(Status.CANCELLED);
+
+        // 3.3 guardar nuevo estado
+        repo.save(sale);
     }
 }

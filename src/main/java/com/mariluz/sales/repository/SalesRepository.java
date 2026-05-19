@@ -23,4 +23,7 @@ public interface SalesRepository extends JpaRepository<Sale, Integer> {
 
     // metodo para buscar ventas por el ID del usuario que las creó
     public List<Sale> findByUserId(String userId);
+
+    //metodo para validar que la venta le pertenece al usuario
+    public boolean existsByIdAndUserId(Integer id, String userId);
 }

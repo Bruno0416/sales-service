@@ -17,4 +17,5 @@ public interface SalesService {
     // 5. buscar mis compras (por usuario)
     public List<SaleResponse> getSalesByUserId();
     // 6. cancelar venta(idVenta)
+    public void cancelSale(Integer saleId);
 }

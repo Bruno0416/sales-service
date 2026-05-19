@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -54,5 +55,17 @@ public class SalesController {
     }
 
     // 5. buscar mis compras (por usuario)
+    @GetMapping("/user-sales")
+    public ResponseEntity<List<SaleResponse>> getSalesByUserId() {
+        return ResponseEntity.ok(service.getSalesByUserId());
+    }
+
     // 6. cancelar venta(idVenta)
+    @PutMapping("/cancel/{saleId}")
+    public ResponseEntity<Void> cancelSale(
+        @Valid @PathVariable Integer saleId
+    ) {
+        service.cancelSale(saleId);
+        return ResponseEntity.noContent().build();
+    }
 }
