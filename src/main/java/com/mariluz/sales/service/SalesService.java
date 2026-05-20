@@ -2,9 +2,7 @@ package com.mariluz.sales.service;
 
 import com.mariluz.sales.dto.*;
 import java.util.List;
-import org.springframework.stereotype.Service;
 
-@Service
 public interface SalesService {
     // 1. generar venta
     public SaleResponse createSale(SaleRequest request);

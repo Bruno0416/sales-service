@@ -3,10 +3,12 @@ package com.mariluz.sales.controller;
 import com.mariluz.sales.dto.*;
 import com.mariluz.sales.service.SalesService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/sales")
 @RequiredArgsConstructor
+@Validated
 public class SalesController {
 
     private final SalesService service;
@@ -35,7 +38,9 @@ public class SalesController {
     // 2. buscar venta por saleId (usuario)
     @GetMapping("/{id}")
     public ResponseEntity<SaleResponse> getSaleById(
-        @Valid @PathVariable Integer id
+        @Positive(
+            message = "El id debe ser mayor a cero"
+        ) @PathVariable Integer id
     ) {
         return ResponseEntity.ok(service.getSaleById(id));
     }
@@ -43,7 +48,9 @@ public class SalesController {
     // 3. ver estado venta
     @GetMapping("/status/{saleId}")
     public ResponseEntity<SaleStatusResponse> getStatusBySaleId(
-        @Valid @PathVariable Integer saleId
+        @Positive(
+            message = "El id de la venta debe ser mayor a cero"
+        ) @PathVariable Integer saleId
     ) {
         return ResponseEntity.ok(service.getStatusBySaleId(saleId));
     }
@@ -63,7 +70,9 @@ public class SalesController {
     // 6. cancelar venta(idVenta)
     @PutMapping("/cancel/{saleId}")
     public ResponseEntity<Void> cancelSale(
-        @Valid @PathVariable Integer saleId
+        @Positive(
+            message = "El id de la venta debe ser mayor a cero"
+        ) @PathVariable Integer saleId
     ) {
         service.cancelSale(saleId);
         return ResponseEntity.noContent().build();

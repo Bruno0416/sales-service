@@ -6,51 +6,61 @@ import com.mariluz.sales.dto.catalog.UpdateStockRequest;
 import com.mariluz.sales.exceptions.CouldNotUpdateStockException;
 import com.mariluz.sales.exceptions.ProductsNotFoundException;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 @Service
 public class CatalogClient {
 
     private final RestClient restClient;
 
-    public CatalogClient() {
-        this.restClient = RestClient.builder()
-            .baseUrl("http://localhost:8084/catalog")
-            .build();
+    // URL del servicio de catalogo inyectada desde application.properties
+    public CatalogClient(@Value("${catalog.service.url}") String baseUrl) {
+        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
     }
 
     public GetProductsResponse findProducts(
         List<Integer> ids,
         String authHeader
     ) throws ProductsNotFoundException {
-        // 1. crear el contenido de la solicitud
         CatalogRequest content = CatalogRequest.builder().ids(ids).build();
-
-        // 2. enviar la solicitud y obtener la respuesta
-        return restClient
-            .post()
-            .uri("/products/ids")
-            .header("Authorization", authHeader)
-            .body(content)
-            .retrieve()
-            .body(GetProductsResponse.class);
+        try {
+            return restClient
+                .post()
+                .uri("/products/ids")
+                .header("Authorization", authHeader)
+                .body(content)
+                .retrieve()
+                .body(GetProductsResponse.class);
+        } catch (RestClientException e) {
+            // error al comunicarse con el servicio de catalogo
+            throw new ProductsNotFoundException(
+                "No se pudo obtener los productos del catalogo."
+            );
+        }
     }
 
     public void updateStock(Integer id, Integer quantity, String authHeader)
         throws CouldNotUpdateStockException {
-        // 1. crear contenido de la solicitud
         UpdateStockRequest request = UpdateStockRequest.builder()
             .id(id)
             .quantity(quantity)
             .build();
-        // 2. enviar, obtener respuesta
-        restClient
-            .put()
-            .uri("/update-stock")
-            .header("Authorization", authHeader)
-            .body(request)
-            .retrieve()
-            .toBodilessEntity();
+        try {
+            restClient
+                .put()
+                .uri("/update-stock")
+                .header("Authorization", authHeader)
+                .body(request)
+                .retrieve()
+                .toBodilessEntity();
+        } catch (RestClientException e) {
+            // error al comunicarse con el servicio de catalogo
+            throw new CouldNotUpdateStockException(
+                "No se pudo actualizar el stock del producto: " + id
+            );
+        }
     }
 }

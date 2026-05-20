@@ -4,6 +4,7 @@ import com.mariluz.sales.dto.ErrorResponse;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,11 +15,12 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // Handler producto no encontrado
+    // Handler stock no actualizable
     @ExceptionHandler(CouldNotUpdateStockException.class)
     public ResponseEntity<ErrorResponse> handleCouldNotUpdateStock(
         CouldNotUpdateStockException ex,
@@ -29,6 +31,23 @@ public class GlobalExceptionHandler {
                 .timeStamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
                 .message("No se pudo actualizar el stock")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler stock insuficiente
+    @ExceptionHandler(InsufficientStockException.class)
+    public ResponseEntity<ErrorResponse> handleInsufficientStock(
+        InsufficientStockException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.CONFLICT.value())
+                .message("Stock insuficiente")
                 .errors(Map.of("error", ex.getMessage()))
                 .endpoint(request.getRequestURI())
                 .build()
@@ -69,24 +88,58 @@ public class GlobalExceptionHandler {
         );
     }
 
-    // Handler MethodNotSupported Exception
-    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
-        HttpRequestMethodNotSupportedException ex,
+    // Handler venta ya cancelada
+    @ExceptionHandler(CouldNotCancelSaleException.class)
+    public ResponseEntity<ErrorResponse> handleCouldNotCancelSale(
+        CouldNotCancelSaleException ex,
         HttpServletRequest request
     ) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
-                .status(HttpStatus.NOT_FOUND.value())
-                .message("Venta no encontrada")
+                .status(HttpStatus.CONFLICT.value())
+                .message("No se pudo cancelar la venta")
                 .errors(Map.of("error", ex.getMessage()))
                 .endpoint(request.getRequestURI())
                 .build()
         );
     }
 
-    // Validacion Parseo del json
+    // Handler productos duplicados en el request
+    @ExceptionHandler(DuplicateProductException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateProduct(
+        DuplicateProductException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message("Productos duplicados en la solicitud")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler metodo HTTP no permitido
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+        HttpRequestMethodNotSupportedException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.METHOD_NOT_ALLOWED.value())
+                .message("Metodo HTTP no permitido")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Validacion parseo del json
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleJsonParseError(
         HttpMessageNotReadableException ex,
@@ -103,6 +156,23 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.BAD_REQUEST.value())
                 .message("Error en la solicitud")
                 .errors(error)
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler usuario no autenticado
+    @ExceptionHandler(UnauthenticatedException.class)
+    public ResponseEntity<ErrorResponse> handleUnauthenticated(
+        UnauthenticatedException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.UNAUTHORIZED.value())
+                .message("No autenticado")
+                .errors(Map.of("error", ex.getMessage()))
                 .endpoint(request.getRequestURI())
                 .build()
         );
@@ -148,6 +218,55 @@ public class GlobalExceptionHandler {
         );
     }
 
+    // Handler validacion de parametros de ruta
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(
+        ConstraintViolationException ex,
+        HttpServletRequest request
+    ) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getConstraintViolations().forEach(cv -> {
+            String path = cv.getPropertyPath().toString();
+            // extraer el nombre del parametro (ej: "getSaleById.id" -> "id")
+            String field = path.contains(".")
+                ? path.substring(path.lastIndexOf(".") + 1)
+                : path;
+            errors.put(field, cv.getMessage());
+        });
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message("Error de validacion")
+                .errors(errors)
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler tipo de argumento invalido en parametros de ruta
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+        MethodArgumentTypeMismatchException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message("Tipo de argumento invalido")
+                .errors(
+                    Map.of(
+                        ex.getName(),
+                        "Se esperaba un valor de tipo " +
+                            ex.getRequiredType().getSimpleName()
+                    )
+                )
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
     // Handler token expirado
     @ExceptionHandler(ExpiredJwtException.class)
     public ResponseEntity<ErrorResponse> handleExpiredTokenException(
@@ -156,13 +275,13 @@ public class GlobalExceptionHandler {
     ) {
         Map<String, String> error = Map.of(
             "error",
-            "El token ha expirado. Por favor, inicie sesión nuevamente."
+            "El token ha expirado. Por favor, inicie sesion nuevamente."
         );
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
-                .status(HttpStatus.BAD_REQUEST.value())
+                .status(HttpStatus.UNAUTHORIZED.value())
                 .message("Token expirado")
                 .errors(error)
                 .endpoint(request.getRequestURI())
@@ -178,13 +297,13 @@ public class GlobalExceptionHandler {
     ) {
         Map<String, String> error = Map.of(
             "error",
-            "El token proporcionado es inválido o está corrupto."
+            "El token proporcionado es invalido o esta corrupto."
         );
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
-                .status(HttpStatus.BAD_REQUEST.value())
+                .status(HttpStatus.UNAUTHORIZED.value())
                 .message("Error de token")
                 .errors(error)
                 .endpoint(request.getRequestURI())

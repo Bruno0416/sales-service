@@ -1,10 +1,15 @@
 package com.mariluz.sales.service;
 
 import com.mariluz.sales.client.CatalogClient;
+import com.mariluz.sales.client.NotificationClient;
 import com.mariluz.sales.dto.*;
 import com.mariluz.sales.dto.catalog.*;
 import com.mariluz.sales.exceptions.CouldNotCancelSaleException;
+import com.mariluz.sales.exceptions.DuplicateProductException;
+import com.mariluz.sales.exceptions.InsufficientStockException;
+import com.mariluz.sales.exceptions.ProductsNotFoundException;
 import com.mariluz.sales.exceptions.SaleNotFoundException;
+import com.mariluz.sales.exceptions.UnauthenticatedException;
 import com.mariluz.sales.exceptions.UnauthorizedOperationException;
 import com.mariluz.sales.model.Sale;
 import com.mariluz.sales.model.SaleItem;
@@ -13,13 +18,14 @@ import com.mariluz.sales.model.User;
 import com.mariluz.sales.repository.SalesRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -28,33 +34,28 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 public class SalesServiceImpl implements SalesService {
 
     private final CatalogClient catalogClient;
-
+    private final NotificationClient notificationClient;
     private final SalesRepository repo;
 
     private User getCurrentUser() {
         Authentication auth =
             SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !(auth.getPrincipal() instanceof User user)) {
-            throw new UnauthorizedOperationException(
-                "No hay un usuario autenticado"
-            );
+            throw new UnauthenticatedException("No hay un usuario autenticado");
         }
-
         return user;
     }
 
     private void validateAdminAccess(String message) {
         User user = getCurrentUser();
-
         if (!user.getRole().equalsIgnoreCase("ADMIN")) {
-            // si el usuario no es admin arrojamos un error
             throw new UnauthorizedOperationException(message);
         }
     }
 
     @Override
+    @Transactional
     public SaleResponse createSale(SaleRequest request) {
-        // extraer token para comunicarse con el catalogo y obtener usuario
         String authHeader = (
             (ServletRequestAttributes) RequestContextHolder.getRequestAttributes()
         )
@@ -70,42 +71,37 @@ public class SalesServiceImpl implements SalesService {
             .map(p -> p.getId())
             .toList();
 
-        // 2. ---> validar productos (restClient) <---
+        // validar productos duplicados en el request
+        if (ids.size() != ids.stream().distinct().count()) {
+            throw new DuplicateProductException();
+        }
 
-        // 2.1 obtener productos del catalogo
+        // 2. validar productos (restClient)
         List<ProductResponse> products = catalogClient
             .findProducts(ids, authHeader)
             .getProducts();
 
-        // 2.2 crear map de productos validados
         Map<SaleItemRequest, ProductResponse> validatedItemsMap =
-            new HashMap<>();
+            new LinkedHashMap<>();
 
         for (SaleItemRequest itemRequest : request.getProducts()) {
-            // 2.3 Buscamos el producto en la lista en lugar de en un mapa
-            ProductResponse productInCatalog =
-                products
-                    .stream()
-                    .filter(p -> p.getId().equals(itemRequest.getId()))
-                    //aplicamos filtro al stream para encontrar el producto por id
-                    .findFirst()
-                    // si el primer elemento de la lista filtrada no existe, lanzamos una excepcion (no existe el producto)
-                    .orElseThrow(() ->
-                        new IllegalArgumentException(
-                            "Producto no encontrado: " + itemRequest.getId()
-                        )
-                    );
+            ProductResponse productInCatalog = products
+                .stream()
+                .filter(p -> p.getId().equals(itemRequest.getId()))
+                .findFirst()
+                .orElseThrow(() ->
+                    new ProductsNotFoundException(
+                        "Producto no encontrado: " + itemRequest.getId()
+                    )
+                );
 
-            // 2.4 Validamos el stock
             if (productInCatalog.getQuantity() < itemRequest.getQuantity()) {
-                // si el stock del producto es menor que la cantidad solicitada lanzamos una excepcion
-                throw new IllegalStateException(
-                    "Stock insuficiente para el producto: " +
+                throw new InsufficientStockException(
+                    "Stock insuficiente para el producto: id=" +
                         itemRequest.getId()
                 );
             }
 
-            // Guardamos en el mapa final
             validatedItemsMap.put(itemRequest, productInCatalog);
         }
 
@@ -116,21 +112,11 @@ public class SalesServiceImpl implements SalesService {
             .mapToInt(p -> p.getKey().getQuantity() * p.getValue().getPrice())
             .sum();
 
-        System.out.println(total);
-        // iniciar lista de items de venta
         List<SaleItem> items = new ArrayList<>();
-        // inicializar lista para notificacion
         List<String> productsNoti = new ArrayList<>();
 
-        // 4. actualizar stock
+        // 4. construir items y lista de notificacion
         validatedItemsMap.forEach((item, p) -> {
-            // por cada item actualizamos stock
-            catalogClient.updateStock(
-                p.getId(),
-                item.getQuantity(),
-                authHeader
-            );
-            // agregamos los items a una lista (construyendo el objeto)
             items.add(
                 SaleItem.builder()
                     .productId(p.getId())
@@ -139,20 +125,18 @@ public class SalesServiceImpl implements SalesService {
                     .subTotal(item.getQuantity() * p.getPrice())
                     .build()
             );
-
-            // agregamos los items a la lista que enviaremos por correo
             productsNoti.add(p.getName() + " - " + item.getQuantity());
         });
-        // 5. guardar venta
+
+        // 5. actualizar stock
+        validatedItemsMap.forEach((item, p) ->
+            catalogClient.updateStock(p.getId(), item.getQuantity(), authHeader)
+        );
+
+        // 6. guardar venta
         Sale sale = Sale.builder()
             .userId(user.getId())
-            .items(items)
-            .total(
-                items
-                    .stream()
-                    .mapToInt(i -> i.getSubTotal())
-                    .sum()
-            )
+            .total(total)
             .status(Status.COMPLETED)
             .createdAt(LocalDateTime.now())
             .build();
@@ -160,9 +144,21 @@ public class SalesServiceImpl implements SalesService {
         sale.addItems(items);
         repo.save(sale);
 
-        // 6. mandar notificacion con los productos comprados --> opcional por ahora
+        // 7. enviar notificacion
+        try {
+            notificationClient.sendPurchaseEmail(
+                user.getEmail(),
+                "Confirmacion de tu compra",
+                productsNoti
+            );
+        } catch (Exception e) {
+            // no se interrumpe el flujo principal si la notificacion falla pero se imprime el error
+            System.out.println(
+                "Error al enviar notificacion: " + e.getMessage()
+            );
+        }
 
-        // 7. retornar respuesta
+        // 8. retornar respuesta
         return SaleResponse.builder()
             .id(sale.getId())
             .total(sale.getTotal())
@@ -175,6 +171,7 @@ public class SalesServiceImpl implements SalesService {
                     .map(i ->
                         SaleItemResponse.builder()
                             .id(i.getId())
+                            .productId(i.getProductId())
                             .quantity(i.getQuantity())
                             .subTotal(i.getSubTotal())
                             .build()
@@ -188,8 +185,7 @@ public class SalesServiceImpl implements SalesService {
     public SaleResponse getSaleById(Integer id) {
         // 1. obtener usuario
         User user = getCurrentUser();
-
-        // 2.
+        // 2. obtener venta por id y usuario
         Sale sale = repo
             .findByIdAndUserId(id, user.getId())
             .orElseThrow(SaleNotFoundException::new);
@@ -207,6 +203,7 @@ public class SalesServiceImpl implements SalesService {
                     .map(i ->
                         SaleItemResponse.builder()
                             .id(i.getId())
+                            .productId(i.getProductId())
                             .quantity(i.getQuantity())
                             .subTotal(i.getSubTotal())
                             .build()
@@ -220,8 +217,7 @@ public class SalesServiceImpl implements SalesService {
     public SaleStatusResponse getStatusBySaleId(Integer saleId) {
         // 1. obtener usuario
         User user = getCurrentUser();
-
-        // 2. construir respuesta
+        // 2. obtener estado de la venta y validar que pertenece al usuario al retornar
         return SaleStatusResponse.builder()
             .status(
                 repo
@@ -233,7 +229,7 @@ public class SalesServiceImpl implements SalesService {
 
     @Override
     public List<SaleResponse> getAllSales() {
-        // 1. validar acceso admin
+        // 1. validar usuario administrador
         validateAdminAccess(
             "Solo un administrador puede acceder a todas las ventas"
         );
@@ -257,6 +253,7 @@ public class SalesServiceImpl implements SalesService {
                             .map(i ->
                                 SaleItemResponse.builder()
                                     .id(i.getId())
+                                    .productId(i.getProductId())
                                     .quantity(i.getQuantity())
                                     .subTotal(i.getSubTotal())
                                     .build()
@@ -276,8 +273,6 @@ public class SalesServiceImpl implements SalesService {
         // 2. buscar ventas
         List<Sale> sales = repo.findByUserId(user.getId());
 
-        System.out.println(sales);
-
         // 3. construir respuesta
         return sales
             .stream()
@@ -294,6 +289,7 @@ public class SalesServiceImpl implements SalesService {
                             .map(i ->
                                 SaleItemResponse.builder()
                                     .id(i.getId())
+                                    .productId(i.getProductId())
                                     .quantity(i.getQuantity())
                                     .subTotal(i.getSubTotal())
                                     .build()
@@ -306,25 +302,24 @@ public class SalesServiceImpl implements SalesService {
     }
 
     @Override
+    @Transactional
     public void cancelSale(Integer saleId) {
         // 1. obtener usuario
         User user = getCurrentUser();
 
-        // 2. verificar que la venta le pertenece al usuario
-        if (!repo.existsByIdAndUserId(saleId, user.getId())) {
-            throw new CouldNotCancelSaleException();
+        // 2. buscar venta del usuario
+        Sale sale = repo
+            .findByIdAndUserId(saleId, user.getId())
+            .orElseThrow(SaleNotFoundException::new);
+
+        // 3. validar que la venta no este ya cancelada
+        if (sale.getStatus() == Status.CANCELLED) {
+            throw new CouldNotCancelSaleException(
+                "La venta ya se encuentra cancelada."
+            );
         }
 
-        // 3. cambiar status de la venta y marcar como cancelada
-        // 3.1 encontrar venta
-        Sale sale = repo
-            .findById(saleId)
-            .orElseThrow(CouldNotCancelSaleException::new);
-
-        // 3.2 cambiar estado
         sale.setStatus(Status.CANCELLED);
-
-        // 3.3 guardar nuevo estado
         repo.save(sale);
     }
 }
