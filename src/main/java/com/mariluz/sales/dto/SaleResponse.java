@@ -3,15 +3,11 @@ package com.mariluz.sales.dto;
 import com.mariluz.sales.model.Status;
 import java.time.LocalDateTime;
 import java.util.List;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
 @Data
+@Builder
 public class SaleResponse {
 
     private Integer id;
