@@ -20,6 +20,57 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // Handler pedido de envío no se pudo cancelar
+    @ExceptionHandler(CouldNotCancelShippingOrderException.class)
+    public ResponseEntity<ErrorResponse> handleCouldNotCancelShippingOrder(
+        CouldNotCancelShippingOrderException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .message("Error al cancelar orden de envío")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler dirección de usuario no encontrada
+    @ExceptionHandler(CouldNotFindUserAddressException.class)
+    public ResponseEntity<ErrorResponse> handleCouldNotFindUserAddress(
+        CouldNotFindUserAddressException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .message("No se pudo obtener la dirección")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
+    // Handler pedido de envío no creado
+    @ExceptionHandler(CouldNotCreateShippingOrderException.class)
+    public ResponseEntity<ErrorResponse> handleCouldNotCreateShippingOrder(
+        CouldNotCreateShippingOrderException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .message("Error al crear orden de envío")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
     // Handler stock no actualizable
     @ExceptionHandler(CouldNotUpdateStockException.class)
     public ResponseEntity<ErrorResponse> handleCouldNotUpdateStock(
@@ -132,7 +183,11 @@ public class GlobalExceptionHandler {
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
                 .status(HttpStatus.METHOD_NOT_ALLOWED.value())
-                .message("Metodo HTTP no permitido")
+                .message(
+                    "Método HTTP '" +
+                        ex.getMethod() +
+                        "' no permitido para esta ruta"
+                )
                 .errors(Map.of("error", ex.getMessage()))
                 .endpoint(request.getRequestURI())
                 .build()

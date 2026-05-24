@@ -37,7 +37,7 @@ public class Sale {
     @Column(nullable = false)
     private Integer total;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
     private Status status;
 
@@ -55,11 +55,6 @@ public class Sale {
     )
     @Builder.Default // para evitar que el deje sin inicializar la lista
     private List<SaleItem> items = new ArrayList<>(); // inicializar la lista para evitar NullPointerException
-
-    public void addItem(final SaleItem item) {
-        this.items.add(item);
-        item.setSale(this);
-    }
 
     public void addItems(List<SaleItem> newItems) {
         this.items = newItems;

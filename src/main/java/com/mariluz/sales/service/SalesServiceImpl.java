@@ -2,6 +2,7 @@ package com.mariluz.sales.service;
 
 import com.mariluz.sales.client.CatalogClient;
 import com.mariluz.sales.client.NotificationClient;
+import com.mariluz.sales.client.ShippingClient;
 import com.mariluz.sales.dto.*;
 import com.mariluz.sales.dto.catalog.*;
 import com.mariluz.sales.exceptions.CouldNotCancelSaleException;
@@ -11,6 +12,7 @@ import com.mariluz.sales.exceptions.ProductsNotFoundException;
 import com.mariluz.sales.exceptions.SaleNotFoundException;
 import com.mariluz.sales.exceptions.UnauthenticatedException;
 import com.mariluz.sales.exceptions.UnauthorizedOperationException;
+import com.mariluz.sales.mapper.SaleMapper;
 import com.mariluz.sales.model.Sale;
 import com.mariluz.sales.model.SaleItem;
 import com.mariluz.sales.model.Status;
@@ -34,8 +36,10 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 public class SalesServiceImpl implements SalesService {
 
     private final CatalogClient catalogClient;
+    private final ShippingClient shippingClient;
     private final NotificationClient notificationClient;
     private final SalesRepository repo;
+    private final SaleMapper saleMapper;
 
     private User getCurrentUser() {
         Authentication auth =
@@ -128,12 +132,7 @@ public class SalesServiceImpl implements SalesService {
             productsNoti.add(p.getName() + " - " + item.getQuantity());
         });
 
-        // 5. actualizar stock
-        validatedItemsMap.forEach((item, p) ->
-            catalogClient.updateStock(p.getId(), item.getQuantity(), authHeader)
-        );
-
-        // 6. guardar venta
+        // 5. guardar venta
         Sale sale = Sale.builder()
             .userId(user.getId())
             .total(total)
@@ -144,6 +143,9 @@ public class SalesServiceImpl implements SalesService {
         sale.addItems(items);
         repo.save(sale);
 
+        // 6. crear orden de envio
+        shippingClient.createShippingOrder(sale.getId(), authHeader);
+
         // 7. enviar notificacion
         try {
             notificationClient.sendPurchaseEmail(
@@ -152,33 +154,22 @@ public class SalesServiceImpl implements SalesService {
                 productsNoti
             );
         } catch (Exception e) {
-            // no se interrumpe el flujo principal si la notificacion falla pero se imprime el error
+            // no se interrumpe el flujo si la notificacion falla pero se imprime el error
             System.out.println(
                 "Error al enviar notificacion: " + e.getMessage()
             );
         }
 
-        // 8. retornar respuesta
-        return SaleResponse.builder()
-            .id(sale.getId())
-            .total(sale.getTotal())
-            .status(sale.getStatus())
-            .createdAt(sale.getCreatedAt())
-            .products(
-                sale
-                    .getItems()
-                    .stream()
-                    .map(i ->
-                        SaleItemResponse.builder()
-                            .id(i.getId())
-                            .productId(i.getProductId())
-                            .quantity(i.getQuantity())
-                            .subTotal(i.getSubTotal())
-                            .build()
-                    )
-                    .toList()
-            )
-            .build();
+        /*
+            NOTA:
+            8. Actualizamos el stock despues de crear la orden de envio de modo que si hay un error en cualquiera
+            de los pasos anteriores el @Transactional cancele la operacion y no se llegue a actualizar el stock.
+        */
+        validatedItemsMap.forEach((item, p) ->
+            catalogClient.updateStock(p.getId(), item.getQuantity(), authHeader)
+        );
+        // 9. retornar respuesta
+        return saleMapper.toResponse(sale);
     }
 
     @Override
@@ -191,26 +182,7 @@ public class SalesServiceImpl implements SalesService {
             .orElseThrow(SaleNotFoundException::new);
 
         // 3. construir respuesta
-        return SaleResponse.builder()
-            .id(sale.getId())
-            .total(sale.getTotal())
-            .status(sale.getStatus())
-            .createdAt(sale.getCreatedAt())
-            .products(
-                sale
-                    .getItems()
-                    .stream()
-                    .map(i ->
-                        SaleItemResponse.builder()
-                            .id(i.getId())
-                            .productId(i.getProductId())
-                            .quantity(i.getQuantity())
-                            .subTotal(i.getSubTotal())
-                            .build()
-                    )
-                    .toList()
-            )
-            .build();
+        return saleMapper.toResponse(sale);
     }
 
     @Override
@@ -218,13 +190,11 @@ public class SalesServiceImpl implements SalesService {
         // 1. obtener usuario
         User user = getCurrentUser();
         // 2. obtener estado de la venta y validar que pertenece al usuario al retornar
-        return SaleStatusResponse.builder()
-            .status(
-                repo
-                    .findStatusByIdAndUserId(saleId, user.getId())
-                    .orElseThrow(SaleNotFoundException::new)
-            )
-            .build();
+        return saleMapper.toStatusResponse(
+            repo
+                .findStatusByIdAndUserId(saleId, user.getId())
+                .orElseThrow(SaleNotFoundException::new)
+        );
     }
 
     @Override
@@ -234,35 +204,8 @@ public class SalesServiceImpl implements SalesService {
             "Solo un administrador puede acceder a todas las ventas"
         );
 
-        // 2. buscar ventas
-        List<Sale> sales = repo.findAll();
-
-        // 3. construir respuesta
-        return sales
-            .stream()
-            .map(sale ->
-                SaleResponse.builder()
-                    .id(sale.getId())
-                    .total(sale.getTotal())
-                    .status(sale.getStatus())
-                    .createdAt(sale.getCreatedAt())
-                    .products(
-                        sale
-                            .getItems()
-                            .stream()
-                            .map(i ->
-                                SaleItemResponse.builder()
-                                    .id(i.getId())
-                                    .productId(i.getProductId())
-                                    .quantity(i.getQuantity())
-                                    .subTotal(i.getSubTotal())
-                                    .build()
-                            )
-                            .toList()
-                    )
-                    .build()
-            )
-            .toList();
+        // 2. buscar y retornar ventas
+        return saleMapper.toResponseList(repo.findAll());
     }
 
     @Override
@@ -270,55 +213,38 @@ public class SalesServiceImpl implements SalesService {
         // 1. obtener usuario
         User user = getCurrentUser();
 
-        // 2. buscar ventas
-        List<Sale> sales = repo.findByUserId(user.getId());
-
-        // 3. construir respuesta
-        return sales
-            .stream()
-            .map(sale ->
-                SaleResponse.builder()
-                    .id(sale.getId())
-                    .total(sale.getTotal())
-                    .status(sale.getStatus())
-                    .createdAt(sale.getCreatedAt())
-                    .products(
-                        sale
-                            .getItems()
-                            .stream()
-                            .map(i ->
-                                SaleItemResponse.builder()
-                                    .id(i.getId())
-                                    .productId(i.getProductId())
-                                    .quantity(i.getQuantity())
-                                    .subTotal(i.getSubTotal())
-                                    .build()
-                            )
-                            .toList()
-                    )
-                    .build()
-            )
-            .toList();
+        // 2. buscar y retornar ventas
+        return saleMapper.toResponseList(repo.findByUserId(user.getId()));
     }
 
     @Override
     @Transactional
     public void cancelSale(Integer saleId) {
-        // 1. obtener usuario
+        // 1. obtener authHeader
+        String authHeader = (
+            (ServletRequestAttributes) RequestContextHolder.getRequestAttributes()
+        )
+            .getRequest()
+            .getHeader("Authorization");
+        // 2. obtener usuario
         User user = getCurrentUser();
 
-        // 2. buscar venta del usuario
+        // 3. buscar venta del usuario
         Sale sale = repo
             .findByIdAndUserId(saleId, user.getId())
             .orElseThrow(SaleNotFoundException::new);
 
-        // 3. validar que la venta no este ya cancelada
+        // 4. validar que la venta no este ya cancelada
         if (sale.getStatus() == Status.CANCELLED) {
             throw new CouldNotCancelSaleException(
                 "La venta ya se encuentra cancelada."
             );
         }
 
+        // 5. cancelar la orden de envío
+        shippingClient.cancelShippingOrder(saleId, authHeader);
+
+        // 6. actualizar estado de la venta a CANCELLED
         sale.setStatus(Status.CANCELLED);
         repo.save(sale);
     }
