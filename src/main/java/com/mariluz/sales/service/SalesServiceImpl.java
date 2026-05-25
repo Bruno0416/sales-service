@@ -6,6 +6,8 @@ import com.mariluz.sales.client.ShippingClient;
 import com.mariluz.sales.dto.*;
 import com.mariluz.sales.dto.catalog.*;
 import com.mariluz.sales.exceptions.CouldNotCancelSaleException;
+import com.mariluz.sales.exceptions.CouldNotCreateShippingOrderException;
+import com.mariluz.sales.exceptions.CouldNotRestoreStockException;
 import com.mariluz.sales.exceptions.DuplicateProductException;
 import com.mariluz.sales.exceptions.InsufficientStockException;
 import com.mariluz.sales.exceptions.ProductsNotFoundException;
@@ -143,10 +145,43 @@ public class SalesServiceImpl implements SalesService {
         sale.addItems(items);
         repo.save(sale);
 
-        // 6. crear orden de envio
-        shippingClient.createShippingOrder(sale.getId(), authHeader);
+        /*
+            NOTA:
+            6. Actualizar stock ANTES de crear la orden de envio.
+            Si updateStock falla -> @Transactional revierte el save (no hay shipping aun).
+            Si createShippingOrder falla ->  restauramos el stock y lanzamos la excepcion
+            para que @Transactional revierta el save.
+        */
+        validatedItemsMap.forEach((item, p) ->
+            catalogClient.updateStock(p.getId(), item.getQuantity(), authHeader)
+        );
 
-        // 7. enviar notificacion
+        // 7. crear orden de envio
+        try {
+            shippingClient.createShippingOrder(sale.getId(), authHeader);
+        } catch (CouldNotCreateShippingOrderException e) {
+            // restaurar stock antes de lanzar la excepcion
+            validatedItemsMap.forEach((item, p) -> {
+                try {
+                    catalogClient.restoreStock(
+                        p.getId(),
+                        item.getQuantity(),
+                        authHeader
+                    );
+                } catch (CouldNotRestoreStockException restoreEx) {
+                    //  loguear para intervencion manual en caso de que falle la restauracion
+                    System.out.println(
+                        "Error: No se pudo restaurar stock del producto id=" +
+                            p.getId() +
+                            " - " +
+                            restoreEx.getMessage()
+                    );
+                }
+            });
+            throw e; // @Transactional revierte el save
+        }
+
+        // 8. enviar notificacion
         try {
             notificationClient.sendPurchaseEmail(
                 user.getEmail(),
@@ -160,14 +195,6 @@ public class SalesServiceImpl implements SalesService {
             );
         }
 
-        /*
-            NOTA:
-            8. Actualizamos el stock despues de crear la orden de envio de modo que si hay un error en cualquiera
-            de los pasos anteriores el @Transactional cancele la operacion y no se llegue a actualizar el stock.
-        */
-        validatedItemsMap.forEach((item, p) ->
-            catalogClient.updateStock(p.getId(), item.getQuantity(), authHeader)
-        );
         // 9. retornar respuesta
         return saleMapper.toResponse(sale);
     }
@@ -247,5 +274,14 @@ public class SalesServiceImpl implements SalesService {
         // 6. actualizar estado de la venta a CANCELLED
         sale.setStatus(Status.CANCELLED);
         repo.save(sale);
+
+        // 7. Correccion: faltaba restaurar el stock
+        sale.getItems().forEach(item -> {
+            catalogClient.restoreStock(
+                item.getProductId(),
+                item.getQuantity(),
+                authHeader
+            );
+        });
     }
 }

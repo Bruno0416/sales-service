@@ -2,7 +2,9 @@ package com.mariluz.sales.client;
 
 import com.mariluz.sales.dto.catalog.CatalogRequest;
 import com.mariluz.sales.dto.catalog.GetProductsResponse;
+import com.mariluz.sales.dto.catalog.RestoreStockRequest;
 import com.mariluz.sales.dto.catalog.UpdateStockRequest;
+import com.mariluz.sales.exceptions.CouldNotRestoreStockException;
 import com.mariluz.sales.exceptions.CouldNotUpdateStockException;
 import com.mariluz.sales.exceptions.ProductsNotFoundException;
 import java.util.List;
@@ -60,6 +62,28 @@ public class CatalogClient {
             // error al comunicarse con el servicio de catalogo
             throw new CouldNotUpdateStockException(
                 "No se pudo actualizar el stock del producto: " + id
+            );
+        }
+    }
+
+    public void restoreStock(Integer id, Integer quantity, String authHeader)
+        throws CouldNotRestoreStockException {
+        RestoreStockRequest request = RestoreStockRequest.builder()
+            .id(id)
+            .quantity(quantity)
+            .build();
+        try {
+            restClient
+                .put()
+                .uri("/restore-stock")
+                .header("Authorization", authHeader)
+                .body(request)
+                .retrieve()
+                .toBodilessEntity();
+        } catch (RestClientException e) {
+            // error al comunicarse con el servicio de catalogo
+            throw new CouldNotRestoreStockException(
+                "No se pudo restaurar el stock del producto: " + id
             );
         }
     }
