@@ -31,12 +31,12 @@ public class SecurityConfig {
                 sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .exceptionHandling(ex ->
-                ex.accessDeniedHandler((req, res, denied) ->
+                ex.authenticationEntryPoint((req, res, authEx) ->
                     handlerExceptionResolver.resolveException(
                         req,
                         res,
                         null,
-                        denied
+                        authEx
                     )
                 )
             )
