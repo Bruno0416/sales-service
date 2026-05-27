@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SalesServiceImpl implements SalesService {
@@ -42,6 +44,8 @@ public class SalesServiceImpl implements SalesService {
     private final NotificationClient notificationClient;
     private final SalesRepository repo;
     private final SaleMapper saleMapper;
+
+    // ------------------ Helpers privados para validar rol usuario -------------------
 
     private User getCurrentUser() {
         Authentication auth =
@@ -54,7 +58,9 @@ public class SalesServiceImpl implements SalesService {
 
     private void validateAdminAccess(String message) {
         User user = getCurrentUser();
+
         if (!user.getRole().equalsIgnoreCase("ADMIN")) {
+            // si el usuario no es admin arrojamos un error
             throw new UnauthorizedOperationException(message);
         }
     }
@@ -170,7 +176,7 @@ public class SalesServiceImpl implements SalesService {
                     );
                 } catch (CouldNotRestoreStockException restoreEx) {
                     //  loguear para intervencion manual en caso de que falle la restauracion
-                    System.out.println(
+                    log.warn(
                         "Error: No se pudo restaurar stock del producto id=" +
                             p.getId() +
                             " - " +
@@ -190,9 +196,7 @@ public class SalesServiceImpl implements SalesService {
             );
         } catch (Exception e) {
             // no se interrumpe el flujo si la notificacion falla pero se imprime el error
-            System.out.println(
-                "Error al enviar notificacion: " + e.getMessage()
-            );
+            log.error("Error al enviar notificacion: " + e.getMessage());
         }
 
         // 9. retornar respuesta
@@ -275,13 +279,23 @@ public class SalesServiceImpl implements SalesService {
         sale.setStatus(Status.CANCELLED);
         repo.save(sale);
 
-        // 7. Correccion: faltaba restaurar el stock
+        // 7. restaurar stock
         sale.getItems().forEach(item -> {
-            catalogClient.restoreStock(
-                item.getProductId(),
-                item.getQuantity(),
-                authHeader
-            );
+            try {
+                catalogClient.restoreStock(
+                    item.getProductId(),
+                    item.getQuantity(),
+                    authHeader
+                );
+            } catch (CouldNotRestoreStockException e) {
+                // no se interrumpe el flujo si falla pero se imprime el error para intervencion manual
+                log.error(
+                    "Error: No se pudo restaurar stock del producto id=" +
+                        item.getProductId() +
+                        " - " +
+                        e.getMessage()
+                );
+            }
         });
     }
 }

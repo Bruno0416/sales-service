@@ -72,6 +72,23 @@ public class GlobalExceptionHandler {
         );
     }
 
+    // Handler stock no restaurado
+    @ExceptionHandler(CouldNotRestoreStockException.class)
+    public ResponseEntity<ErrorResponse> handleCouldNotRestoreStock(
+        CouldNotRestoreStockException ex,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            ErrorResponse.builder()
+                .timeStamp(LocalDateTime.now())
+                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .message("No se pudo restaurar el stock")
+                .errors(Map.of("error", ex.getMessage()))
+                .endpoint(request.getRequestURI())
+                .build()
+        );
+    }
+
     // Handler stock no actualizable
     @ExceptionHandler(CouldNotUpdateStockException.class)
     public ResponseEntity<ErrorResponse> handleCouldNotUpdateStock(
@@ -244,7 +261,7 @@ public class GlobalExceptionHandler {
             ErrorResponse.builder()
                 .timeStamp(LocalDateTime.now())
                 .status(HttpStatus.UNAUTHORIZED.value())
-                .message("No autenticado")
+                .message("Usuario no autenticado")
                 .errors(Map.of("error", ex.getMessage()))
                 .endpoint(request.getRequestURI())
                 .build()
@@ -364,7 +381,7 @@ public class GlobalExceptionHandler {
 
     // Handler error generico de JWT
     @ExceptionHandler(JwtException.class)
-    public ResponseEntity<ErrorResponse> handleJsonParseError(
+    public ResponseEntity<ErrorResponse> handleJwtParseError(
         JwtException ex,
         HttpServletRequest request
     ) {
