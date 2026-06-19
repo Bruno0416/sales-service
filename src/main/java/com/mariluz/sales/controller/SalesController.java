@@ -21,11 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/sales")
 @RequiredArgsConstructor
 @Validated
-public class SalesController {
+public class SalesController implements SalesApi {
 
     private final SalesService service;
 
     // 1. generar venta
+    @Override
     @PostMapping("/create")
     public ResponseEntity<SaleResponse> createSale(
         @Valid @RequestBody SaleRequest request
@@ -36,6 +37,7 @@ public class SalesController {
     }
 
     // 2. buscar venta por saleId (usuario)
+    @Override
     @GetMapping("/{id}")
     public ResponseEntity<SaleResponse> getSaleById(
         @Positive(
@@ -46,6 +48,7 @@ public class SalesController {
     }
 
     // 3. ver estado venta
+    @Override
     @GetMapping("/status/{saleId}")
     public ResponseEntity<SaleStatusResponse> getStatusBySaleId(
         @Positive(
@@ -56,18 +59,21 @@ public class SalesController {
     }
 
     // 4. listar ventas (admin)
+    @Override
     @GetMapping("/all")
     public ResponseEntity<List<SaleResponse>> getAllSales() {
         return ResponseEntity.ok(service.getAllSales());
     }
 
     // 5. buscar mis compras (por usuario)
+    @Override
     @GetMapping("/user-sales")
     public ResponseEntity<List<SaleResponse>> getSalesByUserId() {
         return ResponseEntity.ok(service.getSalesByUserId());
     }
 
     // 6. cancelar venta(idVenta)
+    @Override
     @PutMapping("/cancel/{saleId}")
     public ResponseEntity<Void> cancelSale(
         @Positive(
